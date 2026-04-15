@@ -1,0 +1,43 @@
+services:
+  # 1. Sistema de Caché (Redis)
+  cache:
+    image: redis:alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    # El enunciado pide evaluar el tamaño de la caché (ej: 50mb, 200mb, 500mb) y políticas de remoción (ej: lru, lfu, fifo)
+    command: redis-server --maxmemory 50mb --maxmemory-policy allkeys-lru
+
+  # 2. Almacenamiento de Métricas
+  datos:
+    build: ./almacenamiento_datos
+    container_name: modulo_datos
+    ports:
+      - "8000:8000"
+
+  # 3. Generador de Respuestas (El Cerebro)
+  respuestas:
+    build: ./generador_respuestas
+    container_name: modulo_respuestas
+    ports:
+      - "8001:8000"
+    depends_on:
+      - cache
+      - datos
+    environment:
+      - REDIS_HOST=cache
+      - DATOS_URL=http://datos:8000
+
+  # 4. Generador de Tráfico (El Bot Simualdor)
+  trafico:
+    build: ./generador_trafico
+    container_name: modulo_trafico
+    depends_on:
+      - cache
+      - datos
+      - respuestas
+    environment:
+      - REDIS_HOST=cache
+      - DATOS_URL=http://datos:8000
+      - RESPUESTAS_URL=http://respuestas:8001
+
