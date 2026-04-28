@@ -14,6 +14,7 @@ RESPUESTAS_URL = "http://respuestas:8000" # Ajusta el puerto si en tu Cerebro us
 # Conexión a la Caché Redis
 cache = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
 
+CONFIDENCES = [0.0, 0.25, 0.5, 0.75]
 ZONAS = ["Z1", "Z2", "Z3", "Z4", "Z5"]
 CONSULTAS = ["q1", "q2", "q3", "q4", "q5"]
 
@@ -43,18 +44,26 @@ def simular_trafico(distribucion="uniforme", iteraciones=100):
         # 1. Armar la consulta
         tipo_consulta = random.choice(CONSULTAS)
         zona = random.choice(ZONAS) if distribucion == "uniforme" else elegir_zona_zipf()
+        conf_min = random.choice(CONFIDENCES)
         
         # 2. Generar la llave para la Caché
-        if tipo_consulta == "q4":
+       if tipo_consulta == "q1":
+            cache_key = f"count:{zona}:conf={conf_min}"
+            params = {"zone_id": zona, "confidence_min": conf_min}
+        elif tipo_consulta == "q2":
+            cache_key = f"area:{zona}:conf={conf_min}"
+            params = {"zone_id": zona, "confidence_min": conf_min}
+        elif tipo_consulta == "q3":
+            cache_key = f"density:{zona}:conf={conf_min}"
+            params = {"zone_id": zona, "confidence_min": conf_min}
+        elif tipo_consulta == "q4":
             zona_b = random.choice(ZONAS)
-            cache_key = f"{tipo_consulta}:{zona}:{zona_b}:conf=0.0"
-            params = {"zone_a": zona, "zone_b": zona_b, "confidence_min": 0.0}
-        else:
-            cache_key = f"{tipo_consulta}:{zona}:conf=0.0"
-            if tipo_consulta == "q5":
-                params = {"zone_id": zona, "bins": 5}
-            else:
-                params = {"zone_id": zona, "confidence_min": 0.0}
+            cache_key = f"compare:density:{zona}:{zona_b}:conf={conf_min}"
+            params = {"zone_a": zona, "zone_b": zona_b, "confidence_min": conf_min}
+        elif tipo_consulta == "q5":
+            bins = 5
+            cache_key = f"confidence_dist:{zona}:bins={bins}"
+            params = {"zone_id": zona, "bins": bins}
             
         # 3. INTERCEPTAR CON CACHÉ
         respuesta_cache = cache.get(cache_key)
