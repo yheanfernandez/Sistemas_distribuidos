@@ -27,7 +27,7 @@ def registrar_evento(metrica: Metrica):
     """Recibe un evento del Bot y lo anota en el registro."""
     registro_metricas["total_consultas"] += 1
     
-    # 1. GUARDAMOS LA LATENCIA (Vital para la rúbrica)
+    # 1. GUARDAMOS LA LATENCIA
     registro_metricas["latencias"].append(metrica.tiempo_procesamiento_ms)
     
     if metrica.tipo.upper() == "HIT":
@@ -49,7 +49,7 @@ def ver_estadisticas():
     hit_rate = (hits / total * 100) if total > 0 else 0.0
     miss_rate = (misses / total * 100) if total > 0 else 0.0
     
-    # 2. CÁLCULO DE PERCENTILES (p50 y p95 exigidos)
+    # 2. CÁLCULO DE PERCENTILES
     if len(latencias) > 0:
         p50 = np.percentile(latencias, 50)
         p95 = np.percentile(latencias, 95)
