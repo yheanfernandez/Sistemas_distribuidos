@@ -6,10 +6,10 @@ import numpy as np
 import os
 import json
 
-# URLs internas de Docker (usamos los nombres de los servicios del docker-compose)
+# URLs internas de Docker
 REDIS_HOST = "cache"
 DATOS_URL = "http://datos:8000"
-RESPUESTAS_URL = "http://respuestas:8000" # Ajusta el puerto si en tu Cerebro usaste otro internamente
+RESPUESTAS_URL = "http://respuestas:8000" 
 
 # Conexión a la Caché Redis
 cache = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
@@ -111,9 +111,7 @@ if __name__ == "__main__":
     print("Bot esperando 90 segundos a que la Caché y los Cerebros estén listos...")
     time.sleep(90)
     
-    # -----------------------------------------------------
-    # RÁFAGA 1: UNIFORME
-    # -----------------------------------------------------
+    # METRICAS: UNIFORME
     simular_trafico("uniforme", 5000)
     
     print("\n==================================================")
@@ -133,9 +131,7 @@ if __name__ == "__main__":
     
     time.sleep(5) 
     
-    # -----------------------------------------------------
-    # RÁFAGA 2: ZIPF
-    # -----------------------------------------------------
+    # METRICA: ZIPF
     simular_trafico("zipf", 5000)
     
     print("\n==================================================")
