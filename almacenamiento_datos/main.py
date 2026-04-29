@@ -71,3 +71,18 @@ def ver_estadisticas():
         "latencia_p95_ms": round(p95, 2),
         "throughput_req_por_segundo": round(throughput, 2)
     }
+
+@app.delete("/reset")
+def reset_metricas():
+    global inicio_sistema
+    
+    # Limpiamos los valores dentro del diccionario correcto
+    registro_metricas["total_consultas"] = 0
+    registro_metricas["cache_hits"] = 0
+    registro_metricas["cache_misses"] = 0
+    registro_metricas["latencias"].clear() # Vaciamos la lista de tiempos
+    
+    # Reiniciamos el cronómetro para que el Throughput de Zipf sea exacto
+    inicio_sistema = time.time()
+    
+    return {"mensaje": "Métricas reiniciadas a cero exitosamente"}
