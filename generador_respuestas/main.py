@@ -14,7 +14,7 @@ ZONAS_KM2 = {
     "Z5": 40.0   # Pudahuel
 }
 
-# Bounding boxes extraídas del enunciado oficial de la tarea
+# Bounding boxes del enunciado
 ZONAS_BBOX = {
     "Z1": {"lat_min": -33.445, "lat_max": -33.420, "lon_min": -70.640, "lon_max": -70.600},
     "Z2": {"lat_min": -33.420, "lat_max": -33.390, "lon_min": -70.600, "lon_max": -70.550},
