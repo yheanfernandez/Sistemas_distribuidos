@@ -1,148 +1,146 @@
-import time
-import random
-import requests
-import redis
-import numpy as np
+"""
+Generador de Tráfico — Tarea 2
+================================
+Rol: Kafka Producer puro.
+- Ya NO interactúa directamente con Redis ni con el Generador de Respuestas.
+- Genera consultas Q1-Q5 con distribución Zipf o Uniforme y las publica en el
+  topic 'consultas' de Kafka.
+- Soporta escenario 'spike': ráfaga repentina de alta carga en un intervalo corto.
+"""
+
 import os
+import time
+import uuid
+import random
 import json
+import numpy as np
+from datetime import datetime, timezone
+from confluent_kafka import Producer
 
-# URLs internas de Docker
-REDIS_HOST = "cache"
-DATOS_URL = "http://datos:8000"
-RESPUESTAS_URL = "http://respuestas:8000" 
+# ──────────────────────────────────────────────
+# Configuración desde variables de entorno
+# ──────────────────────────────────────────────
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+ESCENARIO = os.getenv("ESCENARIO", "zipf")        # uniform | zipf | spike
+NUM_CONSULTAS = int(os.getenv("NUM_CONSULTAS", "500"))
+TOPIC_PRINCIPAL = "consultas"
 
-# Conexión a la Caché Redis
-cache = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
-
-CONFIDENCES = [0.0, 0.25, 0.5, 0.75]
 ZONAS = ["Z1", "Z2", "Z3", "Z4", "Z5"]
 CONSULTAS = ["q1", "q2", "q3", "q4", "q5"]
 
-def limpiar_cache():
-    print("Limpiando la caché (Cold Start)...")
-    try:
-        # Nos conectamos a Redis usando la misma variable del docker-compose
-        r = redis.Redis(host=os.getenv("REDIS_HOST", "cache"), port=6379, db=0)
-        r.flushall()
-        print("¡Caché limpia y lista para la prueba!")
-    except Exception as e:
-        print(f"No se pudo limpiar la caché: {e}")
 
-def elegir_zona_zipf():
-    """Ley de Zipf: Unas pocas zonas reciben casi todo el tráfico."""
-    rango = np.random.zipf(1.5)
-    while rango > len(ZONAS):
-        rango = np.random.zipf(1.5)
-    return ZONAS[rango - 1]
+def crear_producer() -> Producer:
+    conf = {
+        "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+        # Garantía de entrega: esperar ACK del broker
+        "acks": "all",
+    }
+    return Producer(conf)
 
-def simular_trafico(distribucion="uniforme", iteraciones=5000):
-    print(f"\n--- Iniciando ráfaga de {iteraciones} consultas ({distribucion.upper()}) ---")
-    
-    for i in range(iteraciones):
-        inicio_ms = time.time() * 1000
 
-        print(f"iteracion N{i}")
-        
-        # 1. Armar la consulta
-        tipo_consulta = random.choice(CONSULTAS)
-        zona = random.choice(ZONAS) if distribucion == "uniforme" else elegir_zona_zipf()
-        conf_min = random.choice(CONFIDENCES)
-        
-        # 2. Generar la llave para la Caché
-        if tipo_consulta == "q1":
-            cache_key = f"count:{zona}:conf={conf_min}"
-            params = {"zone_id": zona, "confidence_min": conf_min}
-        elif tipo_consulta == "q2":
-            cache_key = f"area:{zona}:conf={conf_min}"
-            params = {"zone_id": zona, "confidence_min": conf_min}
-        elif tipo_consulta == "q3":
-            cache_key = f"density:{zona}:conf={conf_min}"
-            params = {"zone_id": zona, "confidence_min": conf_min}
-        elif tipo_consulta == "q4":
-            zona_b = random.choice(ZONAS)
-            cache_key = f"compare:density:{zona}:{zona_b}:conf={conf_min}"
-            params = {"zone_a": zona, "zone_b": zona_b, "confidence_min": conf_min}
-        elif tipo_consulta == "q5":
-            bins = 5
-            cache_key = f"confidence_dist:{zona}:bins={bins}"
-            params = {"zone_id": zona, "bins": bins}
-            
-        # 3. INTERCEPTAR CON CACHÉ
-        respuesta_cache = cache.get(cache_key)
-        
-        if respuesta_cache:
-            evento = "HIT"
-            print(f"[{evento}] {cache_key}")
-        else:
-            evento = "MISS"
-            print(f"[{evento}] {cache_key} -> Calculando en Cerebro...")
-            
-            # Pedimos el cálculo al Generador de Respuestas
-            try:
-                respuesta_cerebro = requests.get(f"{RESPUESTAS_URL}/{tipo_consulta}", params=params)
-                if respuesta_cerebro.status_code == 200:
-                    # Guardamos en Caché por 60 segundos (TTL)
-                    cache.setex(cache_key, 60, json.dumps(respuesta_cerebro.json()))
-            except Exception as e:
-                print(f"Error conectando al cerebro: {e}")
+def delivery_report(err, msg):
+    """Callback que se llama cuando Kafka confirma (o rechaza) un mensaje."""
+    if err:
+        print(f"[PRODUCER] Error al enviar mensaje: {err}")
 
-        latencia = (time.time() * 1000) - inicio_ms
-        
-        # 4. Anotar en el Cuaderno de Métricas
-        metrica = {
-            "tipo": evento,
-            "consulta": tipo_consulta.upper(),
-            "zona": zona,
-            "tiempo_procesamiento_ms": latencia
-        }
-        try:
-            requests.post(f"{DATOS_URL}/registrar", json=metrica)
-        except Exception as e:
-            pass
-        
-        # Pausa breve entre consultas
-        time.sleep(0.1)
+
+def construir_consulta(tipo: str, zona: str) -> dict:
+    """Construye el payload de una consulta con todos los metadatos necesarios."""
+    consulta = {
+        "id": str(uuid.uuid4()),
+        "tipo": tipo,
+        "zona": zona,
+        "confidence_min": 0.0,
+        "bins": 5,
+        "timestamp_creacion": datetime.now(timezone.utc).isoformat(),
+        "retry_count": 0,
+    }
+    # Q4 necesita dos zonas
+    if tipo == "q4":
+        zona_b = random.choice([z for z in ZONAS if z != zona])
+        consulta["zona_b"] = zona_b
+    return consulta
+
+
+def elegir_zona_zipf() -> str:
+    """Distribución Zipf (α=1.5): pocas zonas concentran la mayoría del tráfico."""
+    while True:
+        val = np.random.zipf(1.5)
+        if val <= len(ZONAS):
+            return ZONAS[val - 1]
+
+
+def elegir_zona_uniforme() -> str:
+    return random.choice(ZONAS)
+
+
+def publicar_consulta(producer: Producer, consulta: dict):
+    """Serializa y publica una consulta en el topic principal de Kafka."""
+    producer.produce(
+        TOPIC_PRINCIPAL,
+        key=consulta["id"],
+        value=json.dumps(consulta),
+        callback=delivery_report,
+    )
+    # poll() para activar los callbacks de entrega sin bloquear
+    producer.poll(0)
+
+
+def rafaga_normal(producer: Producer, distribucion: str, n: int, delay: float = 0.05):
+    """Genera N consultas con la distribución indicada."""
+    print(f"\n[TRAFICO] Iniciando ráfaga {distribucion.upper()} — {n} consultas")
+    for i in range(n):
+        tipo = random.choice(CONSULTAS)
+        zona = elegir_zona_zipf() if distribucion == "zipf" else elegir_zona_uniforme()
+        consulta = construir_consulta(tipo, zona)
+        publicar_consulta(producer, consulta)
+        if i % 50 == 0:
+            print(f"[TRAFICO] Publicadas {i}/{n} consultas...")
+        time.sleep(delay)
+    producer.flush()
+    print(f"[TRAFICO] Ráfaga {distribucion.upper()} completada — {n} mensajes en Kafka")
+
+
+def rafaga_spike(producer: Producer, n_base: int = 100, n_spike: int = 500):
+    """
+    Escenario spike: tráfico normal → pico repentino → vuelta a normal.
+    Simula una sobrecarga inesperada para evaluar backlog y recuperación.
+    """
+    print("\n[TRAFICO] Escenario SPIKE iniciado")
+
+    print(f"[TRAFICO] Fase 1: tráfico normal ({n_base} consultas)")
+    rafaga_normal(producer, "uniform", n_base, delay=0.1)
+
+    print(f"\n[TRAFICO] Fase 2: SPIKE — {n_spike} consultas sin delay")
+    for i in range(n_spike):
+        tipo = random.choice(CONSULTAS)
+        zona = elegir_zona_zipf()
+        consulta = construir_consulta(tipo, zona)
+        publicar_consulta(producer, consulta)
+        if i % 100 == 0:
+            print(f"[TRAFICO] Spike: {i}/{n_spike}...")
+    producer.flush()
+    print(f"[TRAFICO] Spike completado — {n_spike} mensajes publicados sin delay")
+
+    print(f"\n[TRAFICO] Fase 3: vuelta a tráfico normal ({n_base} consultas)")
+    rafaga_normal(producer, "uniform", n_base, delay=0.1)
+
 
 if __name__ == "__main__":
+    print(f"[TRAFICO] Esperando 30s para que Kafka esté listo...")
+    time.sleep(30)
 
-    # 1. Limpieza inicial
-    limpiar_cache()
+    producer = crear_producer()
+    print(f"[TRAFICO] Producer conectado a {KAFKA_BOOTSTRAP_SERVERS}")
+    print(f"[TRAFICO] Escenario: {ESCENARIO} | Consultas: {NUM_CONSULTAS}")
 
-    print("Bot esperando 90 segundos a que la Caché y los Cerebros estén listos...")
-    time.sleep(90)
-    
-    # METRICAS: UNIFORME
-    simular_trafico("uniforme", 5000)
-    
-    print("\n==================================================")
-    print("📊 RESULTADOS DE LA RÁFAGA UNIFORME:")
-    try:
-        resultados_uniforme = requests.get(f"{DATOS_URL}/estadisticas").json()
-        print(json.dumps(resultados_uniforme, indent=2))
-        
-        # --- REINICIO TOTAL PARA SEGUNDO ESCENARIO ---
-        requests.delete(f"{DATOS_URL}/reset") # Limpia métricas
-        limpiar_cache()                       # Limpia Redis (Cold Start)
-        # ---------------------------------------------
-        
-    except Exception as e:
-        print(f"Error al reiniciar: {e}")
-    print("==================================================\n")
-    
-    time.sleep(5) 
-    
-    # METRICA: ZIPF
-    simular_trafico("zipf", 5000)
-    
-    print("\n==================================================")
-    print("📊 RESULTADOS DE LA RÁFAGA ZIPF:")
-    try:
-        resultados_zipf = requests.get(f"{DATOS_URL}/estadisticas").json()
-        print(json.dumps(resultados_zipf, indent=2))
-    except Exception as e:
-        print(f"Error al obtener métricas: {e}")
-    print("==================================================\n")
-    
-    print("\n¡Simulación terminada! Manteniendo contenedor vivo...")
+    if ESCENARIO == "spike":
+        rafaga_spike(producer, n_base=100, n_spike=NUM_CONSULTAS)
+    elif ESCENARIO == "zipf":
+        rafaga_normal(producer, "zipf", NUM_CONSULTAS)
+    else:
+        rafaga_normal(producer, "uniform", NUM_CONSULTAS)
+
+    print("\n[TRAFICO] Simulación completada. Contenedor en espera...")
     while True:
         time.sleep(1000)

@@ -1,3 +1,2 @@
-requests
-redis
-numpy
+confluent-kafka==2.3.0
+numpy==1.26.4
