@@ -26,9 +26,7 @@ import socket
 from datetime import datetime, timezone
 from confluent_kafka import Consumer, Producer, KafkaError, KafkaException
 
-# ──────────────────────────────────────────────
 # Configuración desde variables de entorno
-# ──────────────────────────────────────────────
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 REDIS_HOST              = os.getenv("REDIS_HOST", "cache")
 RESPUESTAS_URL          = os.getenv("RESPUESTAS_URL", "http://respuestas:8000")
@@ -45,9 +43,7 @@ TOPIC_DLQ       = "consultas-dlq"
 CONSUMER_ID = socket.gethostname()
 
 
-# ──────────────────────────────────────────────
 # Clientes
-# ──────────────────────────────────────────────
 
 def crear_consumer() -> Consumer:
     return Consumer({
@@ -71,9 +67,7 @@ def crear_redis() -> redis.Redis:
     return redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
 
 
-# ──────────────────────────────────────────────
 # Lógica de caché
-# ──────────────────────────────────────────────
 
 def construir_cache_key(consulta: dict) -> str:
     tipo = consulta["tipo"]
@@ -104,9 +98,7 @@ def guardar_en_cache(r: redis.Redis, key: str, valor: dict):
     r.setex(key, CACHE_TTL, json.dumps(valor))
 
 
-# ──────────────────────────────────────────────
 # Llamada al Generador de Respuestas
-# ──────────────────────────────────────────────
 
 def llamar_generador(consulta: dict) -> dict | None:
     """
@@ -146,9 +138,7 @@ def llamar_generador(consulta: dict) -> dict | None:
         raise Exception(f"Error llamando al generador ({tipo}): {e}")
 
 
-# ──────────────────────────────────────────────
 # Registro de métricas
-# ──────────────────────────────────────────────
 
 def registrar_metrica(evento: str, consulta: dict, latencia_ms: float, extra: dict = None):
     """Envía una métrica al módulo de almacenamiento. No bloquea si falla."""
@@ -169,9 +159,7 @@ def registrar_metrica(evento: str, consulta: dict, latencia_ms: float, extra: di
         pass  # Las métricas no deben bloquear el flujo principal
 
 
-# ──────────────────────────────────────────────
 # Manejo de reintentos y DLQ
-# ──────────────────────────────────────────────
 
 def reenviar_a_retry(producer: Producer, consulta: dict):
     """Incrementa retry_count y reenvía al topic de reintentos."""
@@ -200,9 +188,7 @@ def enviar_a_dlq(producer: Producer, consulta: dict, motivo: str):
     registrar_metrica("DLQ", consulta, 0, {"motivo": motivo})
 
 
-# ──────────────────────────────────────────────
 # Procesamiento de una consulta
-# ──────────────────────────────────────────────
 
 def procesar_consulta(consulta: dict, r: redis.Redis, producer: Producer):
     """
@@ -245,9 +231,7 @@ def procesar_consulta(consulta: dict, r: redis.Redis, producer: Producer):
         return False
 
 
-# ──────────────────────────────────────────────
 # Loop principal del consumidor
-# ──────────────────────────────────────────────
 
 def ejecutar_consumer():
     print(f"[CONSUMER {CONSUMER_ID}] Iniciando...")

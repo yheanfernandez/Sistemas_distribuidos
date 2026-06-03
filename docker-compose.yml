@@ -1,8 +1,6 @@
 services:
 
-  # ─────────────────────────────────────────────
   # INFRAESTRUCTURA BASE
-  # ─────────────────────────────────────────────
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -38,10 +36,8 @@ services:
       timeout: 10s
       retries: 10
 
-  # ─────────────────────────────────────────────
   # INICIALIZADOR DE TOPICS KAFKA
   # Crea los topics necesarios antes de que arranquen los servicios
-  # ─────────────────────────────────────────────
   kafka-init:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka_init
@@ -60,10 +56,8 @@ services:
       echo 'Inicialización completada.'
       "
 
-  # ─────────────────────────────────────────────
   # CACHÉ (Redis) — mismo de Tarea 1
   # Configuración base justificada: 200mb LRU (balance entre hit rate y memoria)
-  # ─────────────────────────────────────────────
   cache:
     image: redis:alpine
     container_name: redis_cache
@@ -71,18 +65,14 @@ services:
       - "6379:6379"
     command: redis-server --maxmemory 200mb --maxmemory-policy allkeys-lru
 
-  # ─────────────────────────────────────────────
   # ALMACENAMIENTO DE MÉTRICAS — ampliado para Tarea 2
-  # ─────────────────────────────────────────────
   datos:
     build: ./almacenamiento_datos
     container_name: modulo_datos
     ports:
       - "8000:8000"
 
-  # ─────────────────────────────────────────────
   # GENERADOR DE RESPUESTAS — sin cambios respecto a Tarea 1
-  # ─────────────────────────────────────────────
   respuestas:
     build: ./generador_respuestas
     container_name: modulo_respuestas
@@ -97,9 +87,7 @@ services:
     # Simular falla temporal: docker compose stop respuestas
     # Simular recuperación: docker compose start respuestas
 
-  # ─────────────────────────────────────────────
   # GENERADOR DE TRÁFICO — ahora es un Kafka Producer
-  # ─────────────────────────────────────────────
   trafico:
     build: ./generador_trafico
     container_name: modulo_trafico
@@ -118,10 +106,8 @@ services:
       # Cantidad de consultas por ráfaga
       - NUM_CONSULTAS=500
 
-  # ─────────────────────────────────────────────
   # CONSUMIDOR KAFKA — escalable con --scale kafka_consumer=N
   # Ejemplo: docker compose up --scale kafka_consumer=3
-  # ─────────────────────────────────────────────
   kafka_consumer:
     build: ./kafka_consumer
     depends_on:
