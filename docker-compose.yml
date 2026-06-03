@@ -76,6 +76,12 @@ services:
   respuestas:
     build: ./generador_respuestas
     container_name: modulo_respuestas
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     ports:
       - "8001:8000"
     depends_on:
@@ -111,11 +117,11 @@ services:
   kafka_consumer:
     build: ./kafka_consumer
     depends_on:
+      respuestas:
+        condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
       cache:
-        condition: service_started
-      respuestas:
         condition: service_started
       datos:
         condition: service_started
