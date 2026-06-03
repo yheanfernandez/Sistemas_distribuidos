@@ -17,9 +17,7 @@ import numpy as np
 from datetime import datetime, timezone
 from confluent_kafka import Producer
 
-# ──────────────────────────────────────────────
 # Configuración desde variables de entorno
-# ──────────────────────────────────────────────
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 ESCENARIO = os.getenv("ESCENARIO", "zipf")        # uniform | zipf | spike
 NUM_CONSULTAS = int(os.getenv("NUM_CONSULTAS", "500"))
@@ -141,6 +139,14 @@ if __name__ == "__main__":
     else:
         rafaga_normal(producer, "uniform", NUM_CONSULTAS)
 
-    print("\n[TRAFICO] Simulación completada. Contenedor en espera...")
+    # Loop continuo: regenera tráfico cada 30 segundos
+    print("\n[TRAFICO] Simulación completada. Reiniciando en 30s...")
     while True:
-        time.sleep(1000)
+        time.sleep(30)
+        print("\n[TRAFICO] Generando nueva ráfaga...")
+        if ESCENARIO == "spike":
+            rafaga_spike(producer, n_base=100, n_spike=NUM_CONSULTAS)
+        elif ESCENARIO == "zipf":
+            rafaga_normal(producer, "zipf", NUM_CONSULTAS)
+        else:
+            rafaga_normal(producer, "uniform", NUM_CONSULTAS)
