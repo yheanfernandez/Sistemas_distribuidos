@@ -1,6 +1,5 @@
 FROM python:3.10-slim
 
-# confluent-kafka necesita librdkafka
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     librdkafka-dev \
